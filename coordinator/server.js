@@ -5,6 +5,7 @@ const port = 8000;
 const HEARTBEAT_TIMEOUT_MS = 10000;
 
 const nodes = {};
+const fileChanges = [];
 
 app.use(express.json());
 
@@ -35,6 +36,17 @@ app.post("/nodes/heartbeat", (req, res) => {
 
 app.get("/nodes", (req, res) => {
   res.json(Object.values(nodes).map(nodeWithStatus));
+});
+
+app.post("/files/change", (req, res) => {
+  const { nodeId, fileName, operation, hash } = req.body || {};
+  if (!nodeId || !fileName || !operation || !hash) {
+    return res.status(400).json({ error: "nodeId, fileName, operation, and hash are required" });
+  }
+  const event = { nodeId, fileName, operation, hash, receivedAt: Date.now() };
+  fileChanges.push(event);
+  console.log("file change", event);
+  res.json(event);
 });
 
 app.listen(port, () => {
