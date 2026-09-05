@@ -1,0 +1,11 @@
+{
+  "name": "syncmesh-node",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
