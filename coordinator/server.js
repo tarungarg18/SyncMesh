@@ -27,6 +27,20 @@ function getFile(nodeId, filePath) {
   ).get(nodeId, filePath);
 }
 
+function getTargets(sourceNodeId, fileName, latestVersion) {
+  const rows = db.prepare("SELECT nodeId, port, lastSeen, status FROM nodes").all();
+  const targets = [];
+  for (const node of rows) {
+    if (node.nodeId === sourceNodeId) continue;
+    if (nodeWithStatus(node).status !== "ONLINE") continue;
+    const file = getFile(node.nodeId, fileName);
+    if (!file || file.deleted || file.version < latestVersion) {
+      targets.push(node.nodeId);
+    }
+  }
+  return targets;
+}
+
 app.get("/", (req, res) => {
   res.send("SyncMesh Coordinator is running");
 });
@@ -97,6 +111,7 @@ app.post("/files/change", (req, res) => {
       deleted = excluded.deleted
   `).run(fileName, storedHash, version, nodeId, updatedAt, deleted);
 
+  const targets = getTargets(nodeId, fileName, version);
   const event = {
     nodeId,
     fileName,
@@ -105,9 +120,33 @@ app.post("/files/change", (req, res) => {
     version,
     updatedAt,
     deleted,
+    targets,
   };
   console.log("file change", event);
   io.emit("FILE_CHANGED", event);
+
+  if (!deleted && storedHash) {
+    const source = getNode(nodeId);
+    if (source) {
+      for (const targetId of targets) {
+        const target = getNode(targetId);
+        if (!target) continue;
+        fetch(`http://localhost:${target.port}/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName,
+            sourcePort: source.port,
+            hash: storedHash,
+            version,
+          }),
+        }).catch((err) => {
+          console.log("failed to notify", targetId, err.message);
+        });
+      }
+    }
+  }
+
   res.json(event);
 });
 
