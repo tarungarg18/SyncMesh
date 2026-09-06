@@ -1,12 +1,9 @@
 const express = require("express");
-require("./database");
+const db = require("./database");
 
 const app = express();
 const port = 8000;
 const HEARTBEAT_TIMEOUT_MS = 10000;
-
-const nodes = {};
-const fileChanges = [];
 
 app.use(express.json());
 
@@ -16,27 +13,51 @@ function nodeWithStatus(node) {
   return { ...node, status };
 }
 
+function getNode(nodeId) {
+  return db.prepare("SELECT nodeId, port, lastSeen, status FROM nodes WHERE nodeId = ?").get(nodeId);
+}
+
+function getFile(nodeId, filePath) {
+  return db.prepare(
+    "SELECT filePath, hash, version, nodeId, updatedAt, deleted FROM files WHERE nodeId = ? AND filePath = ?"
+  ).get(nodeId, filePath);
+}
+
 app.get("/", (req, res) => {
   res.send("SyncMesh Coordinator is running");
 });
 
 app.post("/nodes/register", (req, res) => {
   const { nodeId, port: nodePort } = req.body;
-  nodes[nodeId] = { nodeId, port: nodePort, lastSeen: Date.now() };
-  res.json(nodeWithStatus(nodes[nodeId]));
+  const lastSeen = Date.now();
+  db.prepare(`
+    INSERT INTO nodes (nodeId, port, lastSeen, status)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(nodeId) DO UPDATE SET
+      port = excluded.port,
+      lastSeen = excluded.lastSeen,
+      status = excluded.status
+  `).run(nodeId, nodePort, lastSeen, "ONLINE");
+  res.json(nodeWithStatus(getNode(nodeId)));
 });
 
 app.post("/nodes/heartbeat", (req, res) => {
   const { nodeId } = req.body;
-  if (!nodes[nodeId]) {
+  const existing = getNode(nodeId);
+  if (!existing) {
     return res.json({});
   }
-  nodes[nodeId].lastSeen = Date.now();
-  res.json(nodeWithStatus(nodes[nodeId]));
+  db.prepare("UPDATE nodes SET lastSeen = ?, status = ? WHERE nodeId = ?").run(
+    Date.now(),
+    "ONLINE",
+    nodeId
+  );
+  res.json(nodeWithStatus(getNode(nodeId)));
 });
 
 app.get("/nodes", (req, res) => {
-  res.json(Object.values(nodes).map(nodeWithStatus));
+  const rows = db.prepare("SELECT nodeId, port, lastSeen, status FROM nodes").all();
+  res.json(rows.map(nodeWithStatus));
 });
 
 app.post("/files/change", (req, res) => {
@@ -44,11 +65,39 @@ app.post("/files/change", (req, res) => {
   if (!nodeId || !fileName || !operation) {
     return res.status(400).json({ error: "nodeId, fileName, and operation are required" });
   }
-  const event = { nodeId, fileName, operation, receivedAt: Date.now() };
-  if (hash) {
-    event.hash = hash;
+
+  const existing = getFile(nodeId, fileName);
+  const updatedAt = Date.now();
+  const deleted = operation === "DELETE" ? 1 : 0;
+  let version;
+  if (!existing) {
+    version = 1;
+  } else if (operation === "DELETE") {
+    version = existing.version;
+  } else {
+    version = existing.version + 1;
   }
-  fileChanges.push(event);
+  const storedHash = hash || (existing && existing.hash) || null;
+
+  db.prepare(`
+    INSERT INTO files (filePath, hash, version, nodeId, updatedAt, deleted)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(nodeId, filePath) DO UPDATE SET
+      hash = excluded.hash,
+      version = excluded.version,
+      updatedAt = excluded.updatedAt,
+      deleted = excluded.deleted
+  `).run(fileName, storedHash, version, nodeId, updatedAt, deleted);
+
+  const event = {
+    nodeId,
+    fileName,
+    operation,
+    hash: storedHash,
+    version,
+    updatedAt,
+    deleted,
+  };
   console.log("file change", event);
   res.json(event);
 });
