@@ -1,7 +1,11 @@
+const http = require("http");
 const express = require("express");
+const { Server } = require("socket.io");
 const db = require("./database");
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, { cors: { origin: "*" } });
 const port = 8000;
 const HEARTBEAT_TIMEOUT_MS = 10000;
 
@@ -38,7 +42,9 @@ app.post("/nodes/register", (req, res) => {
       lastSeen = excluded.lastSeen,
       status = excluded.status
   `).run(nodeId, nodePort, lastSeen, "ONLINE");
-  res.json(nodeWithStatus(getNode(nodeId)));
+  const node = nodeWithStatus(getNode(nodeId));
+  io.emit("NODE_STATUS_CHANGED", node);
+  res.json(node);
 });
 
 app.post("/nodes/heartbeat", (req, res) => {
@@ -52,7 +58,9 @@ app.post("/nodes/heartbeat", (req, res) => {
     "ONLINE",
     nodeId
   );
-  res.json(nodeWithStatus(getNode(nodeId)));
+  const node = nodeWithStatus(getNode(nodeId));
+  io.emit("NODE_STATUS_CHANGED", node);
+  res.json(node);
 });
 
 app.get("/nodes", (req, res) => {
@@ -99,9 +107,21 @@ app.post("/files/change", (req, res) => {
     deleted,
   };
   console.log("file change", event);
+  io.emit("FILE_CHANGED", event);
   res.json(event);
 });
 
-app.listen(port, () => {
+setInterval(() => {
+  const rows = db.prepare("SELECT nodeId, port, lastSeen, status FROM nodes").all();
+  for (const node of rows) {
+    const withStatus = nodeWithStatus(node);
+    if (withStatus.status !== node.status) {
+      db.prepare("UPDATE nodes SET status = ? WHERE nodeId = ?").run(withStatus.status, node.nodeId);
+      io.emit("NODE_STATUS_CHANGED", withStatus);
+    }
+  }
+}, 2000);
+
+server.listen(port, () => {
   console.log(`SyncMesh Coordinator is running on http://localhost:${port}`);
 });

@@ -1,3 +1,60 @@
-#root {
-  padding: 2rem;
+.dashboard {
+  max-width: 560px;
+  margin: 0 auto;
+  border: 1px solid #333;
+  background: #fff;
+}
+
+.dashboard-header {
+  padding: 1rem;
+  text-align: center;
+  font-size: 1.5rem;
+  font-weight: bold;
+  border-bottom: 1px solid #333;
+}
+
+section {
+  padding: 1rem 1.25rem;
+}
+
+h2 {
+  margin: 0 0 0.25rem 0;
+  font-size: 1.1rem;
+  font-weight: bold;
+}
+
+hr {
+  margin: 0 0 0.75rem 0;
+  border: none;
+  border-top: 1px solid #333;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.35rem 0;
+}
+
+.file {
+  padding: 0.5rem 0 0.75rem 0;
+}
+
+.file-name {
+  font-weight: bold;
+  margin-bottom: 0.2rem;
+}
+
+.hash {
+  word-break: break-all;
+}
+
+.message,
+.empty {
+  padding: 0 1.25rem;
+  color: #555;
+}
+
+.message {
+  padding-top: 1rem;
 }
