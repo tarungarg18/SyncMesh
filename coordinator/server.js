@@ -1,4 +1,5 @@
 const express = require("express");
+require("./database");
 
 const app = express();
 const port = 8000;
@@ -40,10 +41,13 @@ app.get("/nodes", (req, res) => {
 
 app.post("/files/change", (req, res) => {
   const { nodeId, fileName, operation, hash } = req.body || {};
-  if (!nodeId || !fileName || !operation || !hash) {
-    return res.status(400).json({ error: "nodeId, fileName, operation, and hash are required" });
+  if (!nodeId || !fileName || !operation) {
+    return res.status(400).json({ error: "nodeId, fileName, and operation are required" });
   }
-  const event = { nodeId, fileName, operation, hash, receivedAt: Date.now() };
+  const event = { nodeId, fileName, operation, receivedAt: Date.now() };
+  if (hash) {
+    event.hash = hash;
+  }
   fileChanges.push(event);
   console.log("file change", event);
   res.json(event);

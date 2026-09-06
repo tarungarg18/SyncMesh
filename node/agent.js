@@ -16,8 +16,24 @@ if (!nodeId || !port) {
 
 fs.mkdirSync(storagePath, { recursive: true });
 
+const coordinatorUrl = "http://localhost:8000";
+
 function hashFile(filePath) {
   return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function sendChange(fileName, operation, hash) {
+  const body = { nodeId, fileName, operation };
+  if (hash) {
+    body.hash = hash;
+  }
+  fetch(`${coordinatorUrl}/files/change`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch((err) => {
+    console.log("failed to send change", err.message);
+  });
 }
 
 fs.watch(storagePath, (eventType, filename) => {
@@ -30,14 +46,19 @@ fs.watch(storagePath, (eventType, filename) => {
   if (eventType === "rename") {
     if (fs.existsSync(filePath)) {
       try {
-        console.log(filename, "CREATE", hashFile(filePath));
+        const hash = hashFile(filePath);
+        console.log(filename, "CREATE", hash);
+        sendChange(filename, "CREATE", hash);
       } catch (err) {}
     } else {
       console.log(filename, "DELETE");
+      sendChange(filename, "DELETE");
     }
   } else if (eventType === "change") {
     try {
-      console.log(filename, "MODIFY", hashFile(filePath));
+      const hash = hashFile(filePath);
+      console.log(filename, "MODIFY", hash);
+      sendChange(filename, "MODIFY", hash);
     } catch (err) {}
   }
 });
