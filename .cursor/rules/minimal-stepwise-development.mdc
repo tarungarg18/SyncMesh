@@ -1,0 +1,16 @@
+---
+description: Keep this project minimal, functional, human-written, and strictly step-driven
+alwaysApply: true
+---
+
+# Minimal Step-by-Step Development
+
+- Implement only the exact step requested by the user.
+- Do not add extra features, abstractions, files, dependencies, validations, optimizations, or cleanup unless explicitly requested.
+- Prefer the simplest code that fulfills the current functional need.
+- "Human-written" means using standard libraries, established frameworks, and their conventional project structure instead of rebuilding existing functionality.
+- Keep implementations direct rather than polished or over-engineered.
+- It is acceptable to keep several related functions in one file and use a simple or loosely structured implementation.
+- Do not prepare for hypothetical future requirements.
+- Ask only when a missing decision prevents the requested step from being implemented.
+- Stop after completing and verifying the requested step, then wait for the next instruction.
