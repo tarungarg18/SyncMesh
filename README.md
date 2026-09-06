@@ -123,7 +123,7 @@ Coordinator (port 8000):
 
 Socket.IO events: `FILE_CHANGED`, `FILE_SYNCED`, `NODE_STATUS_CHANGED`.
 
-REST is the source of current data. Sockets only tell the dashboard to refresh.
+
 
 ## Project layout
 
