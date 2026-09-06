@@ -43,6 +43,12 @@ function activityText(item) {
   if (item.operation === "MODIFY") {
     return `${name} changed${node}`;
   }
+  if (item.operation === "SYNCED") {
+    return `${name} synced to ${item.nodeId}`;
+  }
+  if (item.operation === "CONFLICT") {
+    return `${name} CONFLICT on ${item.nodeId}`;
+  }
   if (item.operation) {
     return `${name} ${String(item.operation).toLowerCase()}${node}`;
   }

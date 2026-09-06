@@ -8,8 +8,17 @@ const server = http.createServer(app);
 const io = new Server(server, { cors: { origin: "*" } });
 const port = 8000;
 const HEARTBEAT_TIMEOUT_MS = 10000;
+const activity = [];
 
 app.use(express.json());
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  next();
+});
+
+function logActivity(item) {
+  activity.unshift(item);
+}
 
 function nodeWithStatus(node) {
   const status =
@@ -27,12 +36,16 @@ function getFile(nodeId, filePath) {
   ).get(nodeId, filePath);
 }
 
-function getTargets(sourceNodeId, fileName, latestVersion) {
+function getTargets(sourceNodeId, fileName, latestVersion, forDelete) {
   const rows = db.prepare("SELECT nodeId, port, lastSeen, status FROM nodes").all();
   const targets = [];
   for (const node of rows) {
     if (node.nodeId === sourceNodeId) continue;
     if (nodeWithStatus(node).status !== "ONLINE") continue;
+    if (forDelete) {
+      targets.push(node.nodeId);
+      continue;
+    }
     const file = getFile(node.nodeId, fileName);
     if (!file || file.deleted || file.version < latestVersion) {
       targets.push(node.nodeId);
@@ -82,6 +95,17 @@ app.get("/nodes", (req, res) => {
   res.json(rows.map(nodeWithStatus));
 });
 
+app.get("/files", (req, res) => {
+  const rows = db.prepare(
+    "SELECT filePath, hash, version, nodeId, updatedAt, deleted FROM files"
+  ).all();
+  res.json(rows);
+});
+
+app.get("/activity", (req, res) => {
+  res.json(activity);
+});
+
 app.post("/files/change", (req, res) => {
   const { nodeId, fileName, operation, hash } = req.body || {};
   if (!nodeId || !fileName || !operation) {
@@ -111,7 +135,9 @@ app.post("/files/change", (req, res) => {
       deleted = excluded.deleted
   `).run(fileName, storedHash, version, nodeId, updatedAt, deleted);
 
-  const targets = getTargets(nodeId, fileName, version);
+  const targets = deleted
+    ? getTargets(nodeId, fileName, version, true)
+    : getTargets(nodeId, fileName, version, false);
   const event = {
     nodeId,
     fileName,
@@ -124,25 +150,59 @@ app.post("/files/change", (req, res) => {
   };
   console.log("file change", event);
   io.emit("FILE_CHANGED", event);
+  logActivity({ time: updatedAt, fileName, operation, nodeId });
 
-  if (!deleted && storedHash) {
-    const source = getNode(nodeId);
-    if (source) {
-      for (const targetId of targets) {
-        const target = getNode(targetId);
-        if (!target) continue;
-        fetch(`http://localhost:${target.port}/pull`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+  const source = getNode(nodeId);
+  if (source) {
+    for (const targetId of targets) {
+      const target = getNode(targetId);
+      if (!target) continue;
+      const body = deleted
+        ? { fileName, operation: "DELETE" }
+        : {
             fileName,
             sourcePort: source.port,
             hash: storedHash,
             version,
-          }),
-        }).catch((err) => {
-          console.log("failed to notify", targetId, err.message);
-        });
+          };
+      if (deleted || storedHash) {
+        fetch(`http://localhost:${target.port}/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+          .then((res) => res.json())
+          .then((result) => {
+            if (result.status === "SYNCED") {
+              db.prepare(`
+                INSERT INTO files (filePath, hash, version, nodeId, updatedAt, deleted)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(nodeId, filePath) DO UPDATE SET
+                  hash = excluded.hash,
+                  version = excluded.version,
+                  updatedAt = excluded.updatedAt,
+                  deleted = excluded.deleted
+              `).run(fileName, storedHash, version, targetId, Date.now(), deleted);
+              io.emit("FILE_SYNCED", { nodeId: targetId, fileName, hash: storedHash, version });
+              logActivity({
+                time: Date.now(),
+                fileName,
+                operation: "SYNCED",
+                nodeId: targetId,
+              });
+            } else if (result.status === "CONFLICT") {
+              io.emit("FILE_SYNCED", { nodeId: targetId, fileName, status: "CONFLICT" });
+              logActivity({
+                time: Date.now(),
+                fileName,
+                operation: "CONFLICT",
+                nodeId: targetId,
+              });
+            }
+          })
+          .catch((err) => {
+            console.log("failed to notify", targetId, err.message);
+          });
       }
     }
   }
