@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "start": "node agent.js"
+    "start": "node agent.js",
+    "node1": "node agent.js node1 5001",
+    "node2": "node agent.js node2 5002",
+    "node3": "node agent.js node3 5003"
   },
   "dependencies": {
     "express": "^5.1.0"
