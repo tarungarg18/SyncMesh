@@ -108,6 +108,32 @@ app.post("/files/change", (req, res) => {
   };
   console.log("file change", event);
   io.emit("FILE_CHANGED", event);
+<<<<<<< HEAD
+=======
+
+  if (!deleted && storedHash) {
+    const source = getNode(nodeId);
+    if (source) {
+      for (const targetId of targets) {
+        const target = getNode(targetId);
+        if (!target) continue;
+        fetch(`http://localhost:${target.port}/pull`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileName,
+            sourcePort: source.port,
+            hash: storedHash,
+            version,
+          }),
+        }).catch((err) => {
+          console.log("failed to notify", targetId, err.message);
+        });
+      }
+    }
+  }
+
+>>>>>>> cebc37f81b2aa49edff213203e7d79f7f8b9b1df
   res.json(event);
 });
 
